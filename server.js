@@ -53,6 +53,8 @@ app.post('/api/webhooks/twilio', validateTwilio, (req, res) => {
   } else {
     twiml.message(`Home & Hill test bot is working ✅ You said: ${body}`);
   }
+  // Log the exact TwiML returned, so a Twilio call can be traced end-to-end.
+  console.log(`[twilio] reply to=${from} twiml=${twiml.toString()}`);
   res.type('text/xml').status(200).send(twiml.toString());
 });
 
