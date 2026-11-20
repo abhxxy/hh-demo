@@ -1,0 +1,1 @@
+{"dependencies":{"express":"^4.21.2","twilio":"^5.3.0"},"description":"Tiny WhatsApp ping bot for testing a Twilio number (Home & Hill)","engines":{"node":">=18"},"main":"server.js","name":"hh-demo","scripts":{"start":"node server.js"},"version":"1.0.0"}
