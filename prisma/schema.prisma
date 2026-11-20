@@ -1,0 +1,170 @@
+// Home & Hill demo — Prisma + SQLite.
+// Dates are stored as "YYYY-MM-DD" strings and times as "HH:MM" strings so all
+// logic stays in Europe/Brussels without timezone conversion bugs.
+// Runtime uses the better-sqlite3 driver adapter (see src/lib/prisma.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Property {
+  id               String             @id @default(cuid())
+  name             String             @unique
+  bedrooms         Int
+  isUpgradeTarget  Boolean            @default(false)
+  defaultCheckin   String             @default("16:00")
+  defaultCheckout  String             @default("10:00")
+  cleaningMinutes  Int                @default(120)
+  reservations     Reservation[]
+  tasks            HousekeepingTask[]
+}
+
+model Reservation {
+  id                          String          @id @default(cuid())
+  guestName                   String
+  guests                      Int
+  propertyId                  String
+  property                    Property        @relation(fields: [propertyId], references: [id])
+  checkinDate                 String // YYYY-MM-DD (Europe/Brussels)
+  checkoutDate                String // YYYY-MM-DD (Europe/Brussels)
+  channel                     String          @default("booking.com")
+  touristTaxCollectedByPlatform Boolean       @default(false)
+  portalToken                 String          @unique
+  status                      String          @default("confirmed") // confirmed | cancelled
+  checkinTime                 String          @default("16:00") // HH:MM, updated by paid early check-in
+  checkoutTime                String          @default("10:00") // HH:MM, updated by paid late check-out
+  accessReleaseTime           String? // HH:MM on check-in day when door access is released (mock)
+  arrived                     Boolean         @default(false)
+  needsFollowUp               Boolean         @default(false)
+  followupSent                Boolean         @default(false)
+  guestPhone                  String?
+  guestEmail                  String?
+  idPhotoPath                 String?
+  registered                  Boolean         @default(false)
+  createdAt                   DateTime        @default(now())
+  messages                    Message[]
+  chatMessages                ChatMessage[]
+  payments                    Payment[]
+  holds                       Hold[]
+  extras                      Extra[]
+  timeline                    TimelineEvent[]
+}
+
+model Contact {
+  id            String    @id @default(cuid())
+  role          String // guest | cleaner | ops
+  phone         String    @unique // E.164, e.g. +32460201874
+  lastInboundAt DateTime?
+}
+
+model Conversation {
+  id     String  @id @default(cuid())
+  phone  String  @unique // E.164
+  paused Boolean @default(false)
+}
+
+model Message {
+  id            String       @id @default(cuid())
+  reservationId String?
+  reservation   Reservation? @relation(fields: [reservationId], references: [id])
+  direction     String // in | out
+  channel       String // whatsapp | sms | portal
+  body          String
+  status        String       @default("sent") // sent | delivered | read | failed | received
+  from          String
+  to            String
+  twilioSid     String?      @unique
+  createdAt     DateTime     @default(now())
+}
+
+model ChatMessage {
+  id            String      @id @default(cuid())
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+  role          String // user | assistant | system
+  text          String
+  createdAt     DateTime    @default(now())
+}
+
+model Payment {
+  id            String       @id @default(cuid())
+  mollieId      String?      @unique
+  reservationId String
+  reservation   Reservation  @relation(fields: [reservationId], references: [id])
+  kind          String // registration | extra
+  extraType     String? // early_checkin | late_checkout | breakfast | upgrade
+  amount        Float
+  currency      String       @default("EUR")
+  status        String       @default("open") // open | paid | failed | canceled | expired | refund_flagged
+  holdId        String?
+  hold          Hold?        @relation(fields: [holdId], references: [id])
+  createdAt     DateTime     @default(now())
+  paidAt        DateTime?
+}
+
+model Hold {
+  id            String      @id @default(cuid())
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+  extraType     String // early_checkin | late_checkout | breakfast | upgrade
+  slot          String // e.g. "13:00", "breakfast:2:09:00", "upgrade"
+  amount        Float
+  expiresAt     DateTime
+  status        String      @default("active") // active | expired | released | confirmed
+  createdAt     DateTime    @default(now())
+  payments      Payment[]
+}
+
+model Extra {
+  id            String      @id @default(cuid())
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+  type          String // early_checkin | late_checkout | breakfast | upgrade
+  details       Json?
+  amount        Float
+  status        String      @default("confirmed") // confirmed | cancelled
+  createdAt     DateTime    @default(now())
+}
+
+model HousekeepingTask {
+  id            String   @id @default(cuid())
+  propertyId    String
+  property      Property @relation(fields: [propertyId], references: [id])
+  date          String // YYYY-MM-DD the property must be ready
+  readyBy       String // HH:MM
+  status        String   @default("pending") // pending | ready | done
+  history       Json? // [{at, text}]
+  reservationId String?
+}
+
+model Pricing {
+  id    String @id @default(cuid())
+  key   String // early_checkin | late_checkout | breakfast | upgrade
+  scope String // bedrooms "1"/"2"/"3", "all" for breakfast, property name for upgrade
+  value Json
+
+  @@unique([key, scope])
+}
+
+model TimelineEvent {
+  id            String      @id @default(cuid())
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+  kind          String // message | payment | offer | task | system | warning | arrival
+  text          String
+  at            DateTime    @default(now())
+}
+
+model ReportEvent {
+  id           String   @id @default(cuid())
+  kind         String // shown | purchased
+  extraType    String
+  propertyType String // "1 bed" / "2 bed" / "3 bed"
+  slot         String
+  revenue      Float    @default(0)
+  at           DateTime @default(now())
+}
