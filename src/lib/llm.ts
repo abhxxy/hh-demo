@@ -212,8 +212,13 @@ export async function ruleBasedReply(reservationId: string, userText: string): P
     return t.greeting(name);
   }
 
+  if (/\b(i'?ve|i have|we'?ve|we have) arrived\b|\b(i'?m|i am|we'?re|we are) here\b|^arrived[!.]*$/.test(text.trim())) {
+    await executeTool("confirm_arrival", {}, reservationId);
+    return "Welcome! Enjoy your stay — message me here any time if you need anything.";
+  }
+
   // Book commands: "book 13:00", "book early 13:00", "book late 12:00", "book breakfast 2 at 09:00", "book upgrade"
-  if (/book|reserve|yes|confirm|ok\b/.test(text) || /ja|oui/.test(text)) {
+  if (/\b(book|reserve|yes|confirm|ok|ja|oui)\b/.test(text)) {
     if (/breakfast|ontbijt|petit/.test(text)) {
       const people = Number((text.match(/for\s+(\d+)/) || [])[1] || res?.guests || 2);
       const time = parseTime(text) || "08:00";
@@ -293,10 +298,6 @@ export async function ruleBasedReply(reservationId: string, userText: string): P
   if (/problem|issue|broken|not working|probl|kapot|panne/.test(text)) {
     const r = (await executeTool("report_issue", { details: userText }, reservationId)) as { message?: string };
     return r.message || "Thanks — I've passed that on to our team.";
-  }
-  if (/arrived|arrive|here|aankomst|arrivée/.test(text)) {
-    await executeTool("confirm_arrival", {}, reservationId);
-    return "Welcome! Enjoy your stay — message me here any time if you need anything.";
   }
   if (/price|cost|cheaper|cheap|prijs|prix|koste/.test(text)) {
     const r = (await executeTool("get_early_checkin_options", {}, reservationId)) as { options?: Array<{ time: string; price: number; available: boolean }> };

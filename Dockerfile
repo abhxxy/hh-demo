@@ -8,7 +8,8 @@
 FROM node:22-alpine AS deps
 RUN apk add --no-cache libc6-compat openssl python3 make g++
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json prisma.config.ts ./
+COPY prisma ./prisma
 # postinstall downloads the Prisma schema engine (~9 MB) — needs network.
 RUN npm ci
 
