@@ -206,6 +206,11 @@ export default function AdminDashboard() {
       {/* Config status + warnings */}
       {status && (
         <section className="mt-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+          {!status.config.admin && (
+            <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+              Demo mode — the dashboard is open with no password. Set ADMIN_PASSWORD to lock it.
+            </p>
+          )}
           <div className="flex flex-wrap gap-2 text-xs">
             <Chip label={status.config.twilio ? "Twilio: on" : "Twilio: NOT SET"} tone={status.config.twilio ? "green" : "amber"} />
             <Chip label={status.config.mollie ? "Mollie test: on" : "Mollie: NOT SET"} tone={status.config.mollie ? "green" : "amber"} />

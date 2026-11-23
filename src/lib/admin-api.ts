@@ -1,10 +1,12 @@
 // Shared guard for admin API routes.
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { ADMIN_COOKIE, isAdminSession } from "./auth";
+import { ADMIN_COOKIE, isAdminSession, isDemoOpen } from "./auth";
 import { isAdminConfigured } from "./config";
 
 export async function requireAdmin(): Promise<NextResponse | null> {
+  // Demo mode: no password configured, the dashboard is open.
+  if (isDemoOpen()) return null;
   if (!isAdminConfigured()) {
     return NextResponse.json(
       { error: "admin_not_configured", message: "ADMIN_PASSWORD is not set — the dashboard is locked until it is." },

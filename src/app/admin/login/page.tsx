@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function AdminLogin() {
@@ -8,6 +8,16 @@ export default function AdminLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Demo mode: no password is configured, so there is no login — go straight in.
+  useEffect(() => {
+    fetch("/api/admin/login")
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j.configured) router.push("/admin");
+      })
+      .catch(() => {});
+  }, [router]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -55,7 +65,7 @@ export default function AdminLogin() {
         </button>
       </form>
       <p className="mt-4 text-xs text-stone-500">
-        The password comes from the ADMIN_PASSWORD environment variable. If it isn&apos;t set, the dashboard stays locked.
+        The password comes from the ADMIN_PASSWORD environment variable. If it isn&apos;t set, the dashboard is open with no login (demo mode).
       </p>
     </main>
   );

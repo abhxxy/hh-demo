@@ -48,7 +48,7 @@ See `.env.example` — every variable the app reads, with a comment. The importa
 | `TWILIO_WHATSAPP_FROM` | Sender, `whatsapp:+32460201874` |
 | `MOLLIE_API_KEY` | Mollie test key (`test_…`) |
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL` | `openai` or `anthropic` chat with tool calling |
-| `ADMIN_PASSWORD` | Staff dashboard login |
+| `ADMIN_PASSWORD` | Staff dashboard login (optional — unset = open dashboard, demo mode) |
 | `HOSTIFY_API_KEY` | Optional — when set, the (stub) real Hostify adapter is used |
 
 **Graceful degradation:** if Twilio, Mollie or the LLM key is missing, the app keeps
