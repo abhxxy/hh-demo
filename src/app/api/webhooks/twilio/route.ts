@@ -5,7 +5,7 @@
 // (keeps the webhook fast).
 import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { recordInbound, sendOutbound, normalizePhone } from "@/lib/whatsapp";
+import { guestDisplayName, recordInbound, sendCheckinInvite, sendOutbound, normalizePhone } from "@/lib/whatsapp";
 import { twilioSignedUrl, twilioSignatureValid } from "@/lib/twilio-validate";
 import { isLlmConfigured, publicBaseUrl } from "@/lib/config";
 import { ruleBasedReply, runLlmChat } from "@/lib/llm";
@@ -73,12 +73,22 @@ export async function POST(req: NextRequest) {
     await prisma.timelineEvent.create({
       data: { reservationId: demo.id, kind: "message", text: `Guest linked by WhatsApp "demo" keyword: ${phone}. Portal link sent.` },
     });
-    const reply =
-      `Welcome to Home & Hill! You're linked to the demo stay in ${demo.property.name} as our test guest.\n` +
-      `Your personal guest portal: ${base}/g/${demo.portalToken}\n` +
-      `Open it to register, upload your ID and pay the tourist tax and deposit — then you can chat with our assistant about your stay.`;
     console.log(`[twilio] demo keyword: linked ${phone} to reservation ${demo.id}`);
-    return xmlResponse(reply);
+    const name = guestDisplayName(params.ProfileName);
+    after(async () => {
+      try {
+        await sendCheckinInvite({
+          to: phone,
+          name,
+          property: demo.property.name,
+          portalToken: demo.portalToken,
+          reservationId: demo.id,
+        });
+      } catch (e) {
+        console.error("[twilio] check-in invite failed", e);
+      }
+    });
+    return xmlResponse();
   }
 
   if (keyword === "cleaner") {

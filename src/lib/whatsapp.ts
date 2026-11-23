@@ -6,8 +6,8 @@
 //  - If SMS fails too, log it and flag it for ops.
 // Every outbound attempt is stored as a Message row so the inbox/timeline show it.
 import { prisma } from "./prisma";
-import { sendSms, sendWhatsApp } from "./twilio";
-import { isTwilioConfigured } from "./config";
+import { sendCheckinButton, sendSms, sendWhatsApp } from "./twilio";
+import { isTwilioConfigured, publicBaseUrl } from "./config";
 
 // Normalize a phone to E.164: trim, drop spaces, ensure a leading "+".
 // (Form-encoded "+" can arrive as a space from sloppy senders.)
@@ -123,6 +123,50 @@ export async function sendOutbound(opts: {
     },
   });
   return { sent: false, reason: "failed", detail: `${wa.error} / SMS: ${sms.error}` };
+}
+
+export function guestDisplayName(profileName: string | undefined): string {
+  const cleaned = (profileName || "").replace(/\s+/g, " ").trim().slice(0, 40);
+  return cleaned || "there";
+}
+
+export async function sendCheckinInvite(opts: {
+  to: string;
+  name: string;
+  property: string;
+  portalToken: string;
+  reservationId: string;
+}): Promise<void> {
+  const phone = normalizePhone(opts.to);
+  const text =
+    `Hi ${opts.name}, thank you for confirming your stay with Home & Hill at ${opts.property}.\n\n` +
+    "Please check in now to confirm your booking and make your arrival easy. It only takes a couple of minutes.";
+  const button = await sendCheckinButton(phone, {
+    name: opts.name,
+    property: opts.property,
+    portalToken: opts.portalToken,
+  });
+  if (button.ok) {
+    await prisma.message.create({
+      data: {
+        reservationId: opts.reservationId,
+        direction: "out",
+        channel: "whatsapp",
+        body: `${text}\n\n[Check in button]`,
+        status: "sent",
+        from: "whatsapp:+32460201874",
+        to: `whatsapp:${phone}`,
+        twilioSid: button.sid,
+      },
+    });
+    return;
+  }
+  console.warn(`[whatsapp] check-in button failed for ${phone} (${button.error}), sending link instead.`);
+  await sendOutbound({
+    to: phone,
+    body: `${text}\n\nCheck in here: ${publicBaseUrl()}/g/${opts.portalToken}`,
+    reservationId: opts.reservationId,
+  });
 }
 
 /** Record an inbound WhatsApp message + update the contact's 24h window. */
