@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isLlmConfigured } from "@/lib/config";
 import { ruleBasedReply, runLlmChat } from "@/lib/llm";
+import { handlePaymentDoneMessage } from "@/lib/payments";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     return NextResponse.json({ error: "empty_message", message: "Please type a message." }, { status: 400 });
   }
   await prisma.chatMessage.create({ data: { reservationId: reservation.id, role: "user", text: message } });
+  const paymentReply = await handlePaymentDoneMessage(reservation.id, message);
+  if (paymentReply) {
+    return NextResponse.json({ reply: paymentReply, llmConfigured: isLlmConfigured() });
+  }
   const history = await prisma.chatMessage.findMany({
     where: { reservationId: reservation.id },
     orderBy: { createdAt: "desc" },

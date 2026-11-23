@@ -19,7 +19,7 @@ const SYSTEM_PROMPT = `You are the Home & Hill guest assistant, chatting with a 
 Rules:
 - ALWAYS use the provided tools for prices, availability, bookings and payments. Never invent a price or a time. If a tool says a slot is unavailable, say so and suggest the next available slot, explaining the price.
 - If the guest asks for something cheaper, look at the tool results and offer the cheapest available option.
-- When the guest accepts an extra, call create_hold and then create_payment, and show the payment link from create_payment in your reply. Holds last 15 minutes.
+- When the guest accepts an extra, call create_hold and then create_payment, and show the payment link from create_payment in your reply. If the result has simulated: true, also say they can tap the link or simply reply "payment done". Never claim a payment is confirmed yourself. Holds last 15 minutes.
 - You can also offer late check-out, breakfast and an upgrade when relevant.
 - If the guest reports a problem, use report_issue with their description.
 - Reply in the same language the guest writes in. Keep replies short (2-4 sentences) unless listing options.
@@ -318,8 +318,11 @@ async function payStep(
 ): Promise<string> {
   const label = hold.label || "your extra";
   const base = t.holdOk(label, hold.amount);
-  const pay = (await executeTool("create_payment", { holdId: hold.holdId }, reservationId)) as { checkoutUrl?: string; error?: string };
-  if (pay.checkoutUrl) return `${base}\n${t.payLink(pay.checkoutUrl)}`;
+  const pay = (await executeTool("create_payment", { holdId: hold.holdId }, reservationId)) as { checkoutUrl?: string; error?: string; simulated?: boolean };
+  if (pay.checkoutUrl) {
+    const hint = pay.simulated ? '\nOr just reply "payment done".' : "";
+    return `${base}\n${t.payLink(pay.checkoutUrl)}${hint}`;
+  }
   if (pay.error === "mollie_not_configured") return `${base}\n${t.payUnavailable}`;
   return base;
 }

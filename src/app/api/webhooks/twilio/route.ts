@@ -9,6 +9,7 @@ import { guestDisplayName, recordInbound, sendCheckinInvite, sendOutbound, norma
 import { twilioSignedUrl, twilioSignatureValid } from "@/lib/twilio-validate";
 import { isLlmConfigured, publicBaseUrl } from "@/lib/config";
 import { ruleBasedReply, runLlmChat } from "@/lib/llm";
+import { handlePaymentDoneMessage } from "@/lib/payments";
 
 export const dynamic = "force-dynamic";
 
@@ -135,11 +136,14 @@ export async function POST(req: NextRequest) {
           take: 10,
         });
         const turns = history.reverse().map((m) => ({ role: m.role as "user" | "assistant", text: m.text }));
-        const reply = isLlmConfigured()
-          ? await runLlmChat(linked.id, turns, body)
-          : await ruleBasedReply(linked.id, body);
         await prisma.chatMessage.create({ data: { reservationId: linked.id, role: "user", text: body } });
-        await prisma.chatMessage.create({ data: { reservationId: linked.id, role: "assistant", text: reply } });
+        const paymentReply = await handlePaymentDoneMessage(linked.id, body);
+        const reply = paymentReply ?? (isLlmConfigured()
+          ? await runLlmChat(linked.id, turns, body)
+          : await ruleBasedReply(linked.id, body));
+        if (!paymentReply) {
+          await prisma.chatMessage.create({ data: { reservationId: linked.id, role: "assistant", text: reply } });
+        }
         const full = `${reply}\n\nYour portal: ${base}/g/${linked.portalToken}`;
         await sendOutbound({ to: phone, body: full, reservationId: linked.id });
       } else {

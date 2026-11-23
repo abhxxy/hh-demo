@@ -5,6 +5,7 @@ import { sendOutbound } from "./whatsapp";
 import { formatDateLong } from "./brussels";
 import { checkUpgrade, getEarlyCheckinOptions, getLateCheckoutOptions } from "./availability";
 import { getHostifyAdapter } from "./hostify";
+import { isMollieConfigured } from "./config";
 
 async function timeline(reservationId: string, kind: string, text: string) {
   await prisma.timelineEvent.create({ data: { reservationId, kind, text } });
@@ -202,6 +203,67 @@ export async function confirmRegistrationPayment(paymentId: string) {
     data: { reservationId: payment.reservationId, role: "assistant", text: "Thank you — your registration is complete, including the tourist tax and deposit. What time do you expect to arrive?" },
   });
   console.log(`[mollie] registration confirmed for reservation ${payment.reservationId}`);
+}
+
+export async function completeSimulatedPayment(
+  paymentId: string,
+): Promise<{ paid: boolean; alreadyProcessed?: boolean; message?: string }> {
+  const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+  if (!payment || payment.mollieId) return { paid: false, message: "This payment link is not valid." };
+  const claimed = await prisma.payment.updateMany({
+    where: { id: payment.id, status: "open" },
+    data: { status: "processing" },
+  });
+  if (claimed.count === 0) {
+    return { paid: false, alreadyProcessed: true, message: "This payment has already been completed." };
+  }
+  if (payment.kind === "registration") {
+    await confirmRegistrationPayment(payment.id);
+    return { paid: true };
+  }
+  const result = await confirmExtraPayment(payment.id);
+  if (result.confirmed) return { paid: true };
+  return {
+    paid: false,
+    message: result.reason === "hold_expired"
+      ? "The 15-minute hold expired, so this extra was not confirmed. The team has been alerted to refund it."
+      : "This slot is no longer available, so it was not confirmed. The team has been alerted to refund it.",
+  };
+}
+
+const PAYMENT_DONE_PATTERNS = [
+  /^(?:(?:ok|okay|yes|done) )?(?:(?:i|we)(?:'?ve| have)? )?(?:just |already )?paid(?: it| now| already| the payment)?$/,
+  /^(?:ok |okay |yes )?(?:the |my |our )?payment (?:is |has been |was )?(?:done|complete|completed|made|finished|successful)(?: now)?$/,
+  /^(?:(?:i|we)(?:'?ve| have)? )?(?:just )?(?:made|done|completed) (?:the |my |our )?payment$/,
+  /^done(?: with)? (?:the )?payment$/,
+  /^(?:j'ai|nous avons) pay[ée]$|^paiement (?:effectu[ée]|fait)$/,
+  /^(?:ik heb |we hebben )?betaald$|^betaling (?:is )?(?:gedaan|voltooid)$/,
+];
+
+export function saysPaymentDone(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/’/g, "'").replace(/[.!,]+/g, " ").replace(/\s+/g, " ").trim();
+  return PAYMENT_DONE_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+export async function handlePaymentDoneMessage(reservationId: string, text: string): Promise<string | null> {
+  if (isMollieConfigured() || !saysPaymentDone(text)) return null;
+  const open = await prisma.payment.findFirst({
+    where: { reservationId, status: "open", mollieId: null },
+    orderBy: { createdAt: "desc" },
+  });
+  const result = open
+    ? await completeSimulatedPayment(open.id)
+    : { paid: false, message: "I don't see a payment waiting right now. Tell me what you'd like to book and I'll set it up." };
+  if (result.paid) {
+    const confirmation = await prisma.chatMessage.findFirst({
+      where: { reservationId, role: "assistant" },
+      orderBy: { createdAt: "desc" },
+    });
+    return confirmation?.text || "Payment confirmed — thank you!";
+  }
+  const reply = result.message || "That payment could not be completed.";
+  await prisma.chatMessage.create({ data: { reservationId, role: "assistant", text: reply } });
+  return reply;
 }
 
 /** A payment failed / was cancelled / expired: release the hold, tell the guest. */
