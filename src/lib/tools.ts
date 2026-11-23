@@ -96,8 +96,13 @@ async function checkUpgradeTool(reservationId: string): Promise<ToolResult> {
 async function createHoldTool(reservationId: string, args: ToolResult): Promise<ToolResult> {
   const res = await getReservationWithProperty(reservationId);
   if (!res) return { error: "reservation_not_found" };
+  if (res.status !== "confirmed") return { error: "reservation_cancelled", message: "This booking has been cancelled, so extras can't be added." };
   const extraType = String(args.extraType || "");
   const slot = String(args.slot || "");
+  if (extraType !== "breakfast") {
+    const owned = await prisma.extra.findFirst({ where: { reservationId, type: extraType, status: "confirmed" } });
+    if (owned) return { error: "already_purchased", message: "This extra is already booked for your stay. Please message the team if you'd like to change it." };
+  }
   let amount = 0;
   let label = "";
 
@@ -154,12 +159,11 @@ async function createPaymentTool(reservationId: string, args: ToolResult): Promi
     return { error: "hold_expired", message: "That hold has expired. I can create a fresh one if you still want it." };
   }
   if (!isMollieConfigured()) {
-    return {
-      error: "mollie_not_configured",
-      message: "Payments are not configured yet (Mollie test key missing). The hold is saved for 15 minutes — staff can confirm it from the dashboard.",
-      holdId: hold.id,
-      amount: hold.amount,
-    };
+    const simulated = await prisma.payment.create({
+      data: { reservationId, kind: "extra", extraType: hold.extraType, amount: hold.amount, currency: "EUR", status: "open", holdId: hold.id },
+    });
+    await timeline(reservationId, "payment", `Demo checkout created for ${hold.extraType} (${eur(hold.amount)}). No real payment is taken.`);
+    return { checkoutUrl: `${publicBaseUrl()}/g/${hold.reservation.portalToken}/pay/${simulated.id}`, amount: hold.amount, currency: "EUR", simulated: true };
   }
   const res = hold.reservation;
   const payment = await createMolliePayment({

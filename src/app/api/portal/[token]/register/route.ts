@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { createMolliePayment } from "@/lib/mollie";
 import { isMollieConfigured } from "@/lib/config";
 import { registrationAmounts } from "@/lib/tools";
+import { normalizePhone } from "@/lib/whatsapp";
 
 export const dynamic = "force-dynamic";
 
@@ -30,14 +31,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   } catch {
     return NextResponse.json({ error: "bad_request", message: "Could not read the form. Please try again." }, { status: 400 });
   }
-  const phone = String(form.get("phone") || "").trim();
+  const rawPhone = String(form.get("phone") || "").trim();
   const email = String(form.get("email") || "").trim();
-  const testBypass = String(form.get("testBypass") || "") === "1";
   const file = form.get("idPhoto") as File | null;
 
-  if (!phone || !/^[+0-9][0-9 ()-]{6,}$/.test(phone)) {
+  if (!rawPhone || !/^[+0-9][0-9 ()-]{6,}$/.test(rawPhone)) {
     return NextResponse.json({ error: "invalid_phone", message: "Please enter a valid phone number, e.g. +32412345678." }, { status: 400 });
   }
+  const phone = normalizePhone(rawPhone);
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "invalid_email", message: "Please enter a valid email address." }, { status: 400 });
   }
@@ -67,29 +68,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
   const amounts = registrationAmounts(reservation);
 
-  // Test-mode bypass (only when Mollie is not configured): lets the demo run
-  // end-to-end without keys. Clearly labelled in the UI and the timeline.
-  if (testBypass && !isMollieConfigured()) {
-    await prisma.payment.create({
-      data: { reservationId: reservation.id, kind: "registration", amount: amounts.total, currency: "EUR", status: "paid", paidAt: new Date() },
-    });
-    await prisma.reservation.update({ where: { id: reservation.id }, data: { registered: true } });
-    await prisma.timelineEvent.create({
-      data: { reservationId: reservation.id, kind: "payment", text: `Registration marked paid in TEST MODE (Mollie not configured): tourist tax €${amounts.touristTax.toFixed(2)} + deposit €${amounts.deposit.toFixed(2)} = €${amounts.total.toFixed(2)}. No real payment was taken.` },
-    });
-    await prisma.chatMessage.create({
-      data: { reservationId: reservation.id, role: "assistant", text: "Thank you — your registration is complete, including the tourist tax and deposit. What time do you expect to arrive?" },
-    });
-    console.log(`[demo] registration test-bypass for reservation ${reservation.id}`);
-    return NextResponse.json({ registered: true, testMode: true });
-  }
-
   if (!isMollieConfigured()) {
-    return NextResponse.json({
-      error: "mollie_not_configured",
-      message: "Test payments aren't set up yet (Mollie test key missing). Your details are saved — use the test-mode button to continue the demo, or ask the team to set up Mollie.",
-      amounts,
-    }, { status: 503 });
+    const existing = await prisma.payment.findFirst({
+      where: { reservationId: reservation.id, kind: "registration", status: "open", mollieId: null },
+    });
+    const simulated = existing ?? await prisma.payment.create({
+      data: { reservationId: reservation.id, kind: "registration", amount: amounts.total, currency: "EUR", status: "open" },
+    });
+    if (!existing) {
+      await prisma.timelineEvent.create({
+        data: { reservationId: reservation.id, kind: "payment", text: `Demo checkout created (€${amounts.total.toFixed(2)}: tourist tax €${amounts.touristTax.toFixed(2)} + deposit €${amounts.deposit.toFixed(2)}). No real payment is taken.` },
+      });
+    }
+    return NextResponse.json({ checkoutUrl: `/g/${token}/pay/${simulated.id}`, amounts, simulated: true });
   }
 
   try {

@@ -24,16 +24,8 @@ function xmlResponse(message?: string) {
 }
 
 async function findDemoReservation() {
-  // The demo reservation is the "Test Guest" stay; fall back to the next
-  // upcoming confirmed reservation.
-  const demo = await prisma.reservation.findFirst({
-    where: { guestName: "Test Guest", status: "confirmed" },
-    orderBy: { checkinDate: "asc" },
-    include: { property: true },
-  });
-  if (demo) return demo;
   return prisma.reservation.findFirst({
-    where: { status: "confirmed" },
+    where: { guestName: "Test Guest", status: "confirmed" },
     orderBy: { checkinDate: "asc" },
     include: { property: true },
   });
@@ -136,6 +128,8 @@ export async function POST(req: NextRequest) {
         const reply = isLlmConfigured()
           ? await runLlmChat(linked.id, turns, body)
           : await ruleBasedReply(linked.id, body);
+        await prisma.chatMessage.create({ data: { reservationId: linked.id, role: "user", text: body } });
+        await prisma.chatMessage.create({ data: { reservationId: linked.id, role: "assistant", text: reply } });
         const full = `${reply}\n\nYour portal: ${base}/g/${linked.portalToken}`;
         await sendOutbound({ to: phone, body: full, reservationId: linked.id });
       } else {

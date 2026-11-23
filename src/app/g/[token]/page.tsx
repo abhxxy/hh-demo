@@ -109,7 +109,7 @@ export default function GuestPortal({ params }: { params: Promise<{ token: strin
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [data?.chatMessages.length]);
 
-  async function register(testBypass: boolean) {
+  async function register() {
     if (!data) return;
     setRegistering(true);
     setError("");
@@ -119,7 +119,6 @@ export default function GuestPortal({ params }: { params: Promise<{ token: strin
       form.set("phone", phone);
       form.set("email", email);
       if (photo) form.set("idPhoto", photo);
-      if (testBypass) form.set("testBypass", "1");
       const res = await fetch(`/api/portal/${token}/register`, { method: "POST", body: form });
       const json = await res.json();
       if (json.checkoutUrl) {
@@ -127,7 +126,7 @@ export default function GuestPortal({ params }: { params: Promise<{ token: strin
         return;
       }
       if (json.registered) {
-        setNotice(testBypass ? "Registered in test mode (no real payment was taken)." : "Registration complete — thank you!");
+        setNotice("Registration complete — thank you!");
         await load(token);
         return;
       }
@@ -326,32 +325,19 @@ export default function GuestPortal({ params }: { params: Promise<{ token: strin
                 </label>
               </div>
 
-              {!data.config.mollie && (
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  Test payments aren&apos;t set up yet (Mollie test key missing). Your details are saved when you continue —
-                  use the test-mode button below to finish registration without a real payment.
-                </div>
-              )}
               <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                 <button
-                  onClick={() => void register(false)}
+                  onClick={() => void register()}
                   disabled={registering}
                   className="flex-1 rounded-xl bg-emerald-800 px-4 py-3 font-semibold text-white disabled:opacity-50"
                 >
-                  {registering ? "Please wait…" : `Pay ${eur(data.amounts.total)} (Mollie test)`}
+                  {registering ? "Please wait…" : `Pay ${eur(data.amounts.total)} (${data.config.mollie ? "Mollie test" : "demo"})`}
                 </button>
-                {!data.config.mollie && (
-                  <button
-                    onClick={() => void register(true)}
-                    disabled={registering}
-                    className="flex-1 rounded-xl border border-amber-400 bg-amber-50 px-4 py-3 font-semibold text-amber-900 disabled:opacity-50"
-                  >
-                    Continue in test mode (no payment)
-                  </button>
-                )}
               </div>
               <p className="mt-3 text-xs text-stone-500">
-                Test payment — use a Mollie test card at checkout. You&apos;ll be redirected back here afterwards.
+                {data.config.mollie
+                  ? "Test payment — use a Mollie test card at checkout. You'll be redirected back here afterwards."
+                  : "Demo payment — no card is needed and no money moves. You'll be returned here afterwards."}
               </p>
             </section>
           ) : (

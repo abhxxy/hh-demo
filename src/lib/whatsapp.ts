@@ -14,7 +14,10 @@ import { isTwilioConfigured } from "./config";
 export function normalizePhone(raw: string): string {
   const cleaned = raw.replace(/^whatsapp:/, "").replace(/[\s()-]/g, "");
   if (!cleaned) return cleaned;
-  return cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
+  if (cleaned.startsWith("+")) return cleaned;
+  if (cleaned.startsWith("00")) return `+${cleaned.slice(2)}`;
+  if (cleaned.startsWith("0")) return `+32${cleaned.slice(1)}`;
+  return `+${cleaned}`;
 }
 
 export type OutboundResult =
