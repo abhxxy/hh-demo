@@ -24,7 +24,13 @@ export async function GET(req: NextRequest) {
       include: { property: true },
     });
     const contact = await prisma.contact.findUnique({ where: { phone } });
-    return NextResponse.json({ phone, paused: conversation?.paused ?? false, role: contact?.role ?? "guest", messages, reservation });
+    return NextResponse.json({
+      phone,
+      paused: conversation?.paused ?? false,
+      role: contact?.role ?? "guest",
+      messages,
+      reservation: reservation ? { ...reservation, property: reservation.property.name } : null,
+    });
   }
   const conversations = await prisma.conversation.findMany({ orderBy: { id: "asc" } });
   const list = [];
